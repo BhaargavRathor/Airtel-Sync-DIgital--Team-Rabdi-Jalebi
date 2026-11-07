@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KYC lab - Udyam Digital</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23e40000%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="logo">a</div><div>Udyam Digital <small>Accel Business</small></div></div>
+  <nav class="nav"><a href="index.html">Customer app</a><a href="backoffice.html">Back-office</a><a class="on" href="kyclab.html">KYC lab</a></nav>
+  <div class="spacer"></div><span class="pill" id="mode">checking API...</span>
+</div>
+<div class="page">
+  <h2>Smart KYC lab</h2>
+  <p class="muted" style="margin-top:0">Runs the same Smart KYC engine as the customer app on all 12 specimen applicant packs (K01-K12): image quality, OCR (on this device), GSTIN and Udyam registry lookups and document cross-checks. Today = <b>15 Jul 2026</b>.</p>
+  <div class="toolbar"><button class="btn sm" id="runAll">Run all 12 packs</button><span class="muted small" id="status"></span></div>
+  <div class="progress" style="max-width:420px"><i id="bar"></i></div>
+  <div class="labgrid" id="grid"></div>
+</div>
+<script src="data/catalogue.js"></script><script src="data/gstin_registry.js"></script><script src="data/udyam_registry.js"></script><script src="data/cities.js"></script>
+<script src="vendor/tesseract/tesseract.min.js"></script>
+<script src="js/engine.js"></script><script src="js/api.js"></script><script src="js/kyc.js"></script>
+<script>
+const grid = document.getElementById('grid');
+window.LAB_RESULTS = {};
+Api.probe().then(s => { const m = document.getElementById('mode'); m.textContent = s ? 'API server' : 'In-browser mock API'; m.className = 'pill ' + (s ? 'ok' : 'warn'); });
+function card(k) {
+  const d = document.createElement('div'); d.className = 'labcard'; d.id = 'c_' + k;
+  const thumbs = ['gst', 'udyam', 'sig', 'addr'].map(s => Kyc.specimenSrc(k, s)).filter(Boolean).map(s => `<img src="${s}" alt="">`).join('');
+  d.innerHTML = `<div class="hd"><b>Pack ${k}</b><span class="pill">not run</span></div><div class="thumbs">${thumbs}</div><div class="small muted body">-</div>`;
+  return d;
+}
+Kyc.SPECIMENS.forEach(k => grid.appendChild(card(k)));
+async function runPack(k) {
+  const c = document.getElementById('c_' + k); c.querySelector('.pill').textContent = 'reading...';
+  const docs = {};
+  for (const slot of ['gst', 'udyam', 'sig', 'addr']) { const src = Kyc.specimenSrc(k, slot); docs[slot] = src ? await Kyc.readDocument(slot, src) : null; }
+  const res = await Kyc.validate(docs, { needsFullKyc: true });
+  const name = (res.registry && res.registry.found && res.registry.tradeName) || (docs.gst && docs.gst.fields.tradeName) || (docs.udyam && docs.udyam.fields.enterpriseName) || '';
+  const label = { verified: ['Verified', 'ok'], review: ['Quick review', 'warn'], action: ['Action needed', 'red'] }[res.decision];
+  c.querySelector('.pill').textContent = label[0]; c.querySelector('.pill').className = 'pill ' + label[1];
+  const issues = res.checks.filter(x => x.status !== 'pass');
+  c.querySelector('.body').innerHTML = `<b style="color:var(--ink)">${name}</b> · ${res.checks.length} checks` + (issues.length ? `<ul class="issues">${issues.map(i => `<li class="${i.status}">${i.title}${i.detail ? ' - ' + i.detail : ''}</li>`).join('')}</ul>` : '<div style="color:var(--green);margin-top:4px">All checks passed</div>');
+  window.LAB_RESULTS[k] = { decision: res.decision, name, issues: issues.map(i => i.status + ': ' + i.title + ' | ' + (i.detail || '')) };
+}
+document.getElementById('runAll').onclick = async () => {
+  const b = document.getElementById('runAll'); b.disabled = true;
+  for (let i = 0; i < Kyc.SPECIMENS.length; i++) {
+    document.getElementById('status').textContent = `Reading pack ${Kyc.SPECIMENS[i]} (${i + 1}/12)...`;
+    await runPack(Kyc.SPECIMENS[i]);
+    document.getElementById('bar').style.width = ((i + 1) / 12 * 100) + '%';
+  }
+  document.getElementById('status').textContent = 'Done.'; b.disabled = false; window.LAB_DONE = true;
+};
+</script>
+</body>
+</html>

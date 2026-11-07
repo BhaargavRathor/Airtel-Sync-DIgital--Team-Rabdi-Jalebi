@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Back-office - Udyam Digital</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23e40000%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="logo">a</div><div>Udyam Digital <small>Sales & partner console</small></div></div>
+  <nav class="nav"><a href="index.html">Customer app</a><a class="on" href="backoffice.html">Back-office</a><a href="kyclab.html">KYC lab</a></nav>
+  <div class="spacer"></div><span class="pill">Role: inside sales · names masked</span>
+</div>
+<div class="page">
+  <h2 style="margin-top:0">Leads the advisor could not close</h2>
+  <p class="muted" style="margin-top:0">Ranked by a propensity score (logistic regression on attributes known at lead creation; hold-out AUC 0.75). Call from the top: the top 30% of scored leads hold 64% of activations. Each lead shows the drop reason, the route and the next best action.</p>
+  <div class="kpis" id="kpis"></div>
+  <div class="toolbar">
+    <input id="q" placeholder="Search business or city" style="width:220px">
+    <select id="fSeg"><option value="">All segments</option></select>
+    <select id="fStage"><option value="">All stages</option></select>
+    <select id="fRoute"><option value="">All routes</option><option>Field</option><option>Partner</option><option>Call back</option></select>
+    <select id="fSrc"><option value="">All sources</option></select>
+    <span class="muted small" id="count"></span>
+  </div>
+  <div class="split">
+    <div style="max-height:640px;overflow:auto;border-radius:14px"><table class="grid" id="tbl"><thead><tr><th>Score</th><th>Business</th><th>Segment · city</th><th>Stalled at</th><th>Reason</th><th>Route</th></tr></thead><tbody></tbody></table></div>
+    <div class="drawer" id="drawer"><b>Select a lead</b><p class="muted small">Details, recommended bundle and next best action appear here.</p></div>
+  </div>
+</div>
+<script src="data/catalogue.js"></script><script src="data/cities.js"></script><script src="data/leads_queue.js"></script><script src="data/baseline.js"></script><script src="data/propensity_model.js"></script>
+<script src="js/engine.js"></script>
+<script>
+const E = Engine, inr = E.inr, esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const SEGKEY = { 'Micro retail & services': 'micro', 'Professional offices': 'prof', 'Small multi-site businesses': 'multi', 'Small manufacturers': 'mfg' };
+const cols = LEADS_QUEUE.columns;
+let rows = LEADS_QUEUE.rows.map(r => Object.fromEntries(cols.map((c, i) => [c, r[i]])));
+const appLeads = JSON.parse(localStorage.getItem('ud_app_leads') || '[]').map(l => ({ id: l.id, business: l.business, type: l.type, segment: l.segment, city: l.city || '-', tier: l.tier || 2, language: l.language, source: 'Digital journey', stage: 'App: ' + l.stage, dropReason: l.reason, employees: l.employees || 1, sites: l.sites || 1, hasGstin: l.gstin ? 'Y' : 'N', contact: 'App user', role: 'Owner', spend: 0, interest: '', score: l.score || 0.1, created: l.at.slice(0, 10), app: l }));
+rows = appLeads.concat(rows);
+// route rules (deck slide 6)
+function route(l) {
+  const seg = SEGKEY[l.segment];
+  if (seg === 'mfg' || (seg === 'multi' && l.sites >= 3) || l.spend >= 15000) return 'Field';
+  if (l.tier === 2 && (seg === 'micro' || !['English', 'Hindi'].includes(l.language) || l.hasGstin === 'N')) return 'Partner';
+  return 'Call back';
+}
+const NBA = {
+  'Unreachable after 3 attempts': 'Send the advisor link on WhatsApp in their language - no call needed',
+  'Wrong or invalid number': 'Verify number via partner; send advisor link by SMS',
+  'Owner had no time for a visit': 'Send the advisor link - 6 questions, no visit',
+  'Visit not scheduled by sales': 'Book a callback slot from the app; escalate to team lead',
+  'Not interested on first call': 'Nurture: WhatsApp case study for their business type in 30 days',
+  'Locked in with current provider': 'Offer to match contract end date; schedule reminder',
+  'Only wanted a mobile plan': 'Offer Business Postpaid now, bundle upsell after 60 days',
+  'Price too high': 'Re-quote with the smaller variant / AirFiber; show savings vs current spend',
+  'Competitor offered cheaper plan': 'Show one-bill value and setup waiver; manager-approved price match',
+  'Quote too complex to understand': 'Send the plain-language quote link with toggles',
+  'Quote took too long to arrive': 'Instant quote in the app - send link today',
+  'Decided to wait': 'Hold the quote for 14 days; reminder on WhatsApp',
+  'Missing GST or Udyam document': 'Switch to lite KYC (ID + address) for non-GST products',
+  'Found paperwork too long': 'Smart KYC link: GSTIN lookup + photo upload, under 15 minutes',
+  'Authorised signatory not available': 'Remote e-sign link to the signatory',
+  'Document details did not match': 'KYC review: show exact mismatch, request one document',
+  'Installation delayed beyond 21 days': 'Escalate install; offer 5G AirFiber interim connection',
+  'Customer cancelled before install': 'Win-back call from install lead with new date',
+  'Site not feasible for fibre': 'Offer 5G AirFiber (2-day install)',
+  'First payment failed': 'Resend UPI collect / e-mandate link',
+};
+const nba = l => l.app ? 'Continue in app with full context - ' + (l.dropReason || '') : (NBA[l.dropReason] || 'Call back');
+rows.forEach(l => l.route = route(l));
+rows.sort((a, b) => (b.app ? 1 : 0) - (a.app ? 1 : 0) || b.score - a.score); // fresh hand-offs from the app first, then by score
+// thresholds
+const allScores = LEADS_QUEUE.rows.map(r => r[cols.indexOf('score')]).sort((a, b) => b - a);
+const p70 = allScores[Math.floor(allScores.length * 0.3)];
+const B = BASELINE;
+document.getElementById('kpis').innerHTML = [
+  [rows.length.toLocaleString('en-IN'), 'leads in queue (stalled after first contact)'],
+  [rows.filter(r => r.score >= p70).length.toLocaleString('en-IN'), 'high-propensity (top 30%) - call first'],
+  [rows.filter(r => r.route === 'Field').length.toLocaleString('en-IN'), 'routed to field sales'],
+  [rows.filter(r => r.route === 'Partner').length.toLocaleString('en-IN'), 'routed to channel partners'],
+  [(B.conversion * 100).toFixed(1) + '%', 'baseline lead-to-activation (Apr-Jun 2026)'],
+].map(k => `<div class="kpi"><b>${k[0]}</b><span>${k[1]}</span></div>`).join('');
+const uniq = k => [...new Set(rows.map(r => r[k]))].sort();
+uniq('segment').forEach(v => fSeg.add(new Option(v, v))); uniq('stage').forEach(v => fStage.add(new Option(v, v))); uniq('source').forEach(v => fSrc.add(new Option(v, v)));
+let sel = null;
+function draw() {
+  const q = document.getElementById('q').value.toLowerCase();
+  const f = rows.filter(r => (!q || (r.business + ' ' + r.city).toLowerCase().includes(q)) && (!fSeg.value || r.segment === fSeg.value) && (!fStage.value || r.stage === fStage.value) && (!fRoute.value || r.route === fRoute.value) && (!fSrc.value || r.source === fSrc.value));
+  document.getElementById('count').textContent = `${f.length.toLocaleString('en-IN')} leads · showing top ${Math.min(150, f.length)}`;
+  const tb = document.querySelector('#tbl tbody');
+  tb.innerHTML = f.slice(0, 150).map((r, i) => `<tr data-i="${rows.indexOf(r)}" class="${sel === r ? 'sel' : ''}"><td><span class="bar"><i style="width:${Math.min(100, r.score / 0.35 * 100)}%"></i></span>${(r.score * 100).toFixed(0)}%</td>
+    <td><b>${esc(r.business)}</b>${r.app ? ' <span class="tag app">from app</span>' : ''}<div class="small muted">${esc(r.type || '')} · ${esc(r.source)}</div></td><td>${esc(r.segment.replace('Small ', ''))}<div class="small muted">${esc(r.city)} · tier ${r.tier} · ${esc(r.language)}</div></td>
+    <td>${esc(r.stage)}</td><td class="small">${esc(r.dropReason)}</td><td><span class="tag ${{ Field: 'field', Partner: 'partner', 'Call back': 'call' }[r.route]}">${r.route}</span></td></tr>`).join('');
+  tb.querySelectorAll('tr').forEach(tr => tr.onclick = () => { sel = rows[+tr.dataset.i]; draw(); detail(sel); });
+}
+function detail(l) {
+  const seg = SEGKEY[l.segment];
+  const ci = E.cityInfo(l.city);
+  const prof = { segment: seg, employees: l.employees, sites: l.sites, city: l.city, tier: l.tier, priorities: [], gst: l.hasGstin === 'Y' ? { found: true, status: 'Active' } : { found: false } };
+  const rec = E.recommend(prof);
+  const interest = (l.interest || '').split(';').filter(x => E.CAT[x]).map(x => E.CAT[x].name);
+  document.getElementById('drawer').innerHTML = `<div class="row" style="justify-content:space-between"><b style="font-size:16px">${esc(l.business)}</b><span class="tag ${{ Field: 'field', Partner: 'partner', 'Call back': 'call' }[l.route]}">${l.route}</span></div>
+    <div class="small muted">${esc(l.id)} · created ${esc(l.created)} · contact ${esc(l.contact)} (${esc(l.role)})</div>
+    <h3>Propensity ${(l.score * 100).toFixed(0)}% ${l.score >= p70 ? '<span class="pill ok">top 30%</span>' : ''}</h3>
+    <div class="small">${esc(l.segment)} · ${l.employees} staff · ${l.sites} site${l.sites > 1 ? 's' : ''} · ${esc(l.city)} (tier ${l.tier}) · ${esc(l.language)} · GSTIN ${l.hasGstin === 'Y' ? 'yes' : 'no'}${l.spend ? ' · spends ' + inr(l.spend) + '/mo today' : ''}</div>
+    ${interest.length ? `<div class="small muted" style="margin-top:4px">Asked about: ${esc(interest.join(', '))}</div>` : ''}
+    <h3>Stalled at: ${esc(l.stage)}</h3><div class="small">${esc(l.dropReason)}</div>
+    <div class="note" style="margin-top:8px"><b>Next best action</b><br>${esc(nba(l))}</div>
+    <h3>Bundle the advisor would offer</h3>
+    <div class="card" style="margin:0"><b>${esc(rec.name)}</b> · ${inr(rec.monthly)}/month<div class="small muted">${rec.lines.map(x => esc(x.product.name) + (x.qty > 1 ? ' ×' + x.qty : '')).join(', ')}</div>${rec.notes.map(n => `<div class="small" style="color:var(--amber);margin-top:4px">${esc(n)}</div>`).join('')}</div>
+    ${l.app && l.app.chat ? `<h3>Advisor chat (last messages)</h3><div class="small muted" style="white-space:pre-wrap;max-height:140px;overflow:auto">${esc(l.app.chat.join('\n'))}</div>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn sm" onclick="this.textContent='Link sent ✓'">Send advisor link on WhatsApp</button><button class="btn ghost sm" onclick="this.textContent='Assigned ✓'">Assign to ${l.route === 'Field' ? 'field' : l.route === 'Partner' ? 'partner' : 'me'}</button></div>`;
+}
+['q', 'fSeg', 'fStage', 'fRoute', 'fSrc'].forEach(id => document.getElementById(id).oninput = draw);
+draw(); if (rows[0]) { sel = rows[0]; draw(); detail(sel); }
+</script>
+</body>
+</html>

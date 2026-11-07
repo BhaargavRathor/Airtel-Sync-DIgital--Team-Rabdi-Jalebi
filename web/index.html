@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Udyam Digital - Accel Business</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%23e40000%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="logo">a</div><div>Udyam Digital <small>Accel Business · prototype</small></div></div>
+  <nav class="nav"><a class="on" href="index.html">Customer app</a><a href="backoffice.html">Back-office</a><a href="kyclab.html">KYC lab</a></nav>
+  <div class="spacer"></div><span class="pill" id="modePill">synthetic data · today = 15 Jul 2026</span>
+</div>
+<div class="stage">
+  <div class="phone"><div class="screen">
+    <div class="statusbar"><span>9:41</span><span>Accel 5G ▮▮▮</span></div>
+    <div class="appbar"><button class="back" id="back" aria-label="Back">‹</button><div class="title" id="appTitle">Accel Business</div>
+      <button class="back" id="spk" title="Voice replies" style="opacity:.45;font-size:16px">🔊</button><select class="lang" id="langSel" aria-label="Language"></select></div>
+    <div class="steps" id="steps"></div>
+    <div class="body" id="body"></div>
+    <div class="footer" id="footer"></div>
+    <div class="toast" id="toast"></div>
+  </div></div>
+  <div class="trace">
+    <h4>Under the hood</h4>
+    <div class="sub">Live trace of API calls, catalogue rules, GenAI and KYC decisions. Identifiers are masked, as they are in production logs.</div>
+    <div class="log" id="log"></div>
+    <div class="legend"><span><b class="k api">API</b> lookups</span><span><b class="k rule">RULE</b> catalogue engine</span><span><b class="k ai">AI</b> language layer</span><span><b class="k kyc">KYC</b> OCR & checks</span></div>
+    <div class="demo-controls">
+      <button data-demo="p1">▶ Persona: insurance office (EN)</button>
+      <button data-demo="p2">▶ Persona: kirana (Hindi)</button>
+      <button data-demo="p3">▶ Persona: travel agency</button>
+      <button data-demo="gst" data-g="37LDYXK0296F1ZB">GSTIN: Kaveri (active)</button>
+      <button data-demo="gst" data-g="37IHKXV5167L1ZS">GSTIN: Vindhya (cancelled)</button>
+      <button data-demo="pack" data-p="K09">KYC pack K09 (clean)</button>
+      <button data-demo="pack" data-p="K11">KYC pack K11 (old bill)</button>
+      <button data-demo="advance">Advance order status</button>
+      <button data-demo="reset">Reset</button>
+    </div>
+  </div>
+</div>
+<script src="data/catalogue.js"></script><script src="data/gstin_registry.js"></script><script src="data/udyam_registry.js"></script>
+<script src="data/cities.js"></script><script src="data/propensity_model.js"></script>
+<script src="vendor/tesseract/tesseract.min.js"></script>
+<script src="js/engine.js"></script><script src="js/api.js"></script><script src="js/kyc.js"></script><script src="js/app.js"></script>
+</body>
+</html>
